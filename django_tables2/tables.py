@@ -6,6 +6,7 @@ from django.utils.datastructures import SortedDict
 from django.template import RequestContext
 from django.template.loader import get_template
 from django.test.client import RequestFactory
+from django.db.models.query import QuerySet
 from django.utils.encoding import StrAndUnicode
 import sys
 from .utils import Accessor, AttributeDict, OrderBy, OrderByTuple, Sequence
@@ -434,3 +435,16 @@ class Table(StrAndUnicode):
     @template.setter
     def template(self, value):
         self._template = value
+
+
+class QuerySetTable(Table):
+    """Extract columns names from given queryset. """
+
+    def __init__(self, queryset, **kwargs):
+        if not isinstance(queryset, QuerySet):
+            raise TypeError('A QuerySet is required as first argument.')
+
+        extra = SortedDict(((f.name, Column(verbose_name=f.verbose_name))
+                            for f in queryset.model._meta.fields))
+        self.base_columns.update(extra)
+        super(QuerySetTable, self).__init__(queryset, **kwargs)
