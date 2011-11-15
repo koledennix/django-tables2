@@ -16,6 +16,7 @@ Examples:
 import re
 import tokenize
 import StringIO
+
 from django.conf import settings
 from django import template
 from django.template import TemplateSyntaxError, RequestContext, Variable, Node
@@ -23,6 +24,8 @@ from django.utils.datastructures import SortedDict
 from django.template.loader import get_template, select_template
 from django.utils.safestring import mark_safe
 from django.utils.http import urlencode
+from django.db.models.query import QuerySet
+
 import django_tables2 as tables
 
 
@@ -190,6 +193,59 @@ class RenderTableNode(Node):
                 return settings.TEMPLATE_STRING_IF_INVALID
 
 
+class SmartRenderTableNode(Node):
+    def __init__(self, table_or_queryset, table_template=None,
+                 header_template=None, row_template=None):
+        self.table_or_queryset = table_or_queryset
+        self.table_template = table_template
+        self.header_template = header_template
+        self.row_template = row_template
+
+    def render(self, context):
+        try:
+            table_or_queryset = self.table_or_queryset.resolve(context)
+            if isinstance(table_or_queryset, QuerySet):
+                table = tables.QuerySetTable(table_or_queryset)
+            else:
+                table = table_or_queryset
+
+            if not isinstance(table, tables.Table):
+                raise ValueError("Expected Table object, but didn't find one.")
+            if "request" not in context:
+                raise AssertionError(
+                        "{% render_table %} requires that the template context"
+                        " contains the HttpRequest in a 'request' variable,"
+                        " check your TEMPLATE_CONTEXT_PROCESSORS setting.")
+            request = context['request']
+            table.order_by = request.GET.get('sort')
+            table.paginate(page=request.GET.get('page', 1))
+            context['table'] = table
+            context['header_template'] = self.header_template.resolve(context)\
+                    if self.header_template is not None else None
+            context['row_template'] = self.row_template.resolve(context)\
+                    if self.row_template is not None else None
+            if self.table_template:
+                template = self.table_template.resolve(context)
+            else:
+                template = table.template
+            if isinstance(template, basestring):
+                template = get_template(template)
+            else:
+                # assume some iterable was given
+                template = select_template(template)
+            try:
+                table.request = request  # HACK! :(
+                return template.render(context)
+            finally:
+                del table.request
+
+        except:
+            if settings.DEBUG:
+                raise
+            else:
+                return settings.TEMPLATE_STRING_IF_INVALID
+
+
 @register.tag
 def render_table(parser, token):
     bits = token.split_contents()
@@ -199,3 +255,28 @@ def render_table(parser, token):
         raise TemplateSyntaxError("'%s' must be given a table." % bits[0])
     template = parser.compile_filter(bits.pop(0)) if bits else None
     return RenderTableNode(table, template)
+
+
+@register.tag
+def smart_render_table(parser, token):
+    """Smart table rendering.
+
+    If queryset provided - renders a QuerySetTable.
+    Performs pagination and ordering.
+    The table, header and row templates can be provided as arguments.
+
+    """
+    bits = token.split_contents()
+    pop_arg = lambda: parser.compile_filter(bits.pop(0)) if bits else None
+
+    try:
+        tag, tb_or_qs = bits.pop(0), parser.compile_filter(bits.pop(0))
+    except ValueError:
+        raise TemplateSyntaxError("'%s' must be given a queryset or a table."
+                                  % bits[0])
+
+    table_template, header_template, row_template = [
+        pop_arg() for i in range(3)]
+
+    return SmartRenderTableNode(tb_or_qs, table_template, header_template,
+                                row_template)

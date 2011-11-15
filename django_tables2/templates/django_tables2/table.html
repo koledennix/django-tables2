@@ -1,68 +1,54 @@
 {% spaceless %}
-{% load django_tables2 i18n %}
+{% load django_tables2 %}
+
 {% if table.page %}
 <div class="table-container">
 {% endif %}
-{% block table %}
+
+{% block table.start %}
 <table{% if table.attrs %} {{ table.attrs.as_html }}{% endif %}>
-    {% block table.thead %}
-    <thead>
-        <tr class="{% cycle "odd" "even" %}">
-        {% for column in table.columns %}
-        {% if column.sortable %}
-            {% with column.order_by as ob %}
-            <th class="{% spaceless %}{% if column.sortable %}sortable {% endif %}{% if ob %}{% if ob.is_descending %}desc{% else %}asc{% endif %}{% endif %}{% endspaceless %}"><a href="{% querystring table.prefixed_order_by_field=ob.opposite|default:column.name %}">{{ column.header }}</a></th>
-            {% endwith %}
-        {% else %}
-            <th>{{ column.header }}</th>
-        {% endif %}
-        {% endfor %}
-        </tr>
-    </thead>
-    {% endblock table.thead %}
-    {% block table.tbody %}
+{% endblock %}
+    {% block table.header %}
+        <thead>
+            <tr class="{% cycle "odd" "even" %}">
+            {% block table.header.before_columns %}{% endblock %}
+            {% include header_template|default:"django_tables2/header.html" %}
+            {% block table.header.after_columns %}{% endblock %}
+            </tr>
+        </thead>
+    {% endblock %}
+    {% block table.body %}
     <tbody>
         {% for row in table.page.object_list|default:table.rows %} {# support pagination #}
-        {% block table.tbody.row %}
-        <tr class="{% cycle "odd" "even" %}">
-            {% for cell in row %}
-                <td>{{ cell }}</td>
-            {% endfor %}
-        </tr>
-        {% endblock table.tbody.row %}
+            <tr class="{% cycle "odd" "even" %}">
+            {% block table.body.before_row %}{% endblock %}
+            {% include row_template|default:"django_tables2/row.html" %}
+            {% block table.body.after_row %}{% endblock %}
+            </tr>
         {% empty %}
         {% if table.empty_text %}
-        {% block table.tbody.empty_text %}
-        <tr><td colspan="{{ table.columns|length }}">{{ table.empty_text }}</td></tr>
-        {% endblock table.tbody.empty_text %}
+            <tr><td colspan="{{ table.columns|length }}">{{ table.empty_text }}</td></tr>
         {% endif %}
         {% endfor %}
     </tbody>
-    {% endblock table.tbody %}
-    {% block table.tfoot %}
-    <tfoot></tfoot>
-    {% endblock table.tfoot %}
+    {% endblock %}
+{% block table.end %}
 </table>
-{% endblock table %}
+{% endblock %}
 
+{% block table.pagination %}
 {% if table.page %}
-{% block pagination %}
 <ul class="pagination">
     {% if table.page.has_previous %}
-    {% block pagination.previous %}
-    <li class="previous"><a href="{% querystring table.prefixed_page_field=table.page.previous_page_number %}">{% trans "Previous" %}</a></li>
-    {% endblock pagination.previous %}
+    <li class="previous"><a href="{% set_url_param page=table.page.previous_page_number %}">Previous</a></li>
     {% endif %}
-    {% block pagination.current %}
-    <li class="current">{% blocktrans with current=table.page.number total=table.paginator.num_pages %}Page {{ current }} of {{ total }}{% endblocktrans %}</li>
-    {% endblock pagination.current %}
+    <li class="current">Page {{ table.page.number }} of {{ table.paginator.num_pages }}</li>
     {% if table.page.has_next %}
-    {% block pagination.next %}
-    <li class="next"><a href="{% querystring table.prefixed_page_field=table.page.next_page_number %}">{% trans "Next" %}</a></li>
-    {% endblock pagination.next %}
+    <li class="next"><a href="{% set_url_param page=table.page.next_page_number %}">Next</a></li>
     {% endif %}
 </ul>
-{% endblock pagination %}
 </div>
 {% endif %}
+{% endblock %}
+        
 {% endspaceless %}
