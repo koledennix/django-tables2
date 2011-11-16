@@ -21,9 +21,11 @@
     <tbody>
         {% for row in table.page.object_list|default:table.rows %} {# support pagination #}
             <tr class="{% cycle "odd" "even" %}">
+            {% block table.row %}
             {% block table.body.before_row %}{% endblock %}
             {% include row_template|default:"django_tables2/row.html" %}
             {% block table.body.after_row %}{% endblock %}
+            {% endblock %}
             </tr>
         {% empty %}
         {% if table.empty_text %}
