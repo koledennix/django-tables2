@@ -10,8 +10,8 @@ from django.db.models.query import QuerySet
 from django.utils.encoding import StrAndUnicode
 import sys
 from .utils import Accessor, AttributeDict, OrderBy, OrderByTuple, Sequence
-from .rows import BoundRows
-from .columns import BoundColumns, Column
+from .rows import BoundRows, BoundRow
+from .columns import BoundColumns, Column, CheckBoxColumn
 
 
 QUERYSET_ACCESSOR_SEPARATOR = '__'
@@ -440,11 +440,14 @@ class Table(StrAndUnicode):
 class QuerySetTable(Table):
     """Extract columns names from given queryset. """
 
-    def __init__(self, queryset, **kwargs):
+    def __init__(self, queryset, checkboxes=False, **kwargs):
         if not isinstance(queryset, QuerySet):
             raise TypeError('A QuerySet is required as first argument.')
 
         extra = SortedDict(((f.name, Column(verbose_name=f.verbose_name))
                             for f in queryset.model._meta.fields))
+        if checkboxes:
+            extra['id'] = CheckBoxColumn(attrs={'name': 'id'})
+
         self.base_columns.update(extra)
         super(QuerySetTable, self).__init__(queryset, **kwargs)
