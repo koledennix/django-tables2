@@ -195,17 +195,24 @@ class RenderTableNode(Node):
 
 class SmartRenderTableNode(Node):
     def __init__(self, table_or_queryset, table_template=None,
-                 header_template=None, row_template=None):
-        self.table_or_queryset = table_or_queryset
-        self.table_template = table_template
-        self.header_template = header_template
-        self.row_template = row_template
+                 header_template=None, row_template=None, sequence=None,
+                 exclude=None, checkboxes=False, paginate=None):
+        var = lambda x: Variable(x) if x else None
+        self.table_or_queryset = Variable(table_or_queryset)
+        self.table_template = var(table_template)
+        self.header_template = var(header_template)
+        self.row_template = var(row_template)
+        self.sequence = sequence
+        self.exclude = exclude
+        self.checkboxes = checkboxes
+        self.paginate = var(paginate)
 
     def render(self, context):
         try:
             table_or_queryset = self.table_or_queryset.resolve(context)
             if isinstance(table_or_queryset, QuerySet):
-                table = tables.QuerySetTable(table_or_queryset)
+                table = tables.QuerySetTable(table_or_queryset,
+                                             self.checkboxes)
             else:
                 table = table_or_queryset
 
@@ -217,8 +224,14 @@ class SmartRenderTableNode(Node):
                         " contains the HttpRequest in a 'request' variable,"
                         " check your TEMPLATE_CONTEXT_PROCESSORS setting.")
             request = context['request']
+            if self.exclude:
+                table.exclude = self.exclude
+            if self.sequence:
+                table.sequence = self.sequence
             table.order_by = request.GET.get('sort')
-            table.paginate(page=request.GET.get('page', 1))
+            if self.paginate:
+                table.paginate(page=request.GET.get('page', 1),
+                               per_page=self.paginate.resolve(context))
             context['table'] = table
             context['header_template'] = self.header_template.resolve(context)\
                     if self.header_template is not None else None
@@ -267,16 +280,29 @@ def smart_render_table(parser, token):
 
     """
     bits = token.split_contents()
-    pop_arg = lambda: parser.compile_filter(bits.pop(0)) if bits else None
 
     try:
-        tag, tb_or_qs = bits.pop(0), parser.compile_filter(bits.pop(0))
+        tag, tb_or_qs_string = bits.pop(0), bits.pop(0)
     except ValueError:
         raise TemplateSyntaxError("'%s' must be given a queryset or a table."
                                   % bits[0])
 
-    table_template, header_template, row_template = [
-        pop_arg() for i in range(3)]
-
-    return SmartRenderTableNode(tb_or_qs, table_template, header_template,
-                                row_template)
+    params = dict([bit.split('=') for bit in bits])
+    if 'exclude' in params:
+        exclude = params['exclude'].strip('"').split(',')
+    else:
+        exclude = None
+    if 'sequence' in params:
+        sequence = params['sequence'].strip('"').split(',')
+    else:
+        sequence = None
+    checkboxes = params.get('checkboxes', 'False') in ('True', '"True"')
+    return SmartRenderTableNode(
+        tb_or_qs_string,
+        table_template=params.get('template', None),
+        header_template=params.get('header_template', None),
+        row_template=params.get('row_template', None),
+        sequence=sequence,
+        exclude=exclude,
+        checkboxes=checkboxes,
+        paginate=params.get('paginate', None))
