@@ -205,7 +205,6 @@ class SmartRenderTableNode(Node):
         self.exclude = exclude
         self.checkboxes = checkboxes
         self.paginate = paginate
-        print table_or_queryset
 
     def render(self, context):
         resolve = lambda x: Variable(x).resolve(context) if x else None
