@@ -437,17 +437,18 @@ class Table(StrAndUnicode):
         self._template = value
 
 
-class QuerySetTable(Table):
+class _QuerySetTable(Table):
     """Extract columns names from given queryset. """
 
     def __init__(self, queryset, checkboxes=False, **kwargs):
         if not isinstance(queryset, QuerySet):
             raise TypeError('A QuerySet is required as first argument.')
 
-        extra = SortedDict(((f.name, Column(verbose_name=f.verbose_name))
-                            for f in queryset.model._meta.fields))
-        if checkboxes:
-            extra['id'] = CheckBoxColumn(attrs={'name': 'id'})
+        super(_QuerySetTable, self).__init__(queryset, **kwargs)
 
-        self.base_columns.update(extra)
-        super(QuerySetTable, self).__init__(queryset, **kwargs)
+def queryset_table_factory(queryset, checkboxes=False):
+    columns = SortedDict(((f.name, Column(verbose_name=f.verbose_name))
+                            for f in queryset.model._meta.fields))
+    if checkboxes:
+        columns['id'] = CheckBoxColumn(attrs={'name': 'id'})
+    return type('QuerySetTable', (_QuerySetTable,), columns)

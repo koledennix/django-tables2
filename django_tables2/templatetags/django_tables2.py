@@ -197,22 +197,24 @@ class SmartRenderTableNode(Node):
     def __init__(self, table_or_queryset, table_template=None,
                  header_template=None, row_template=None, sequence=None,
                  exclude=None, checkboxes=False, paginate=None):
-        var = lambda x: Variable(x) if x else None
-        self.table_or_queryset = Variable(table_or_queryset)
-        self.table_template = var(table_template)
-        self.header_template = var(header_template)
-        self.row_template = var(row_template)
+        self.table_or_queryset = table_or_queryset
+        self.table_template = table_template
+        self.header_template = header_template
+        self.row_template = row_template
         self.sequence = sequence
         self.exclude = exclude
         self.checkboxes = checkboxes
-        self.paginate = var(paginate)
+        self.paginate = paginate
+        print table_or_queryset
 
     def render(self, context):
+        resolve = lambda x: Variable(x).resolve(context) if x else None
         try:
-            table_or_queryset = self.table_or_queryset.resolve(context)
+            table_or_queryset = resolve(self.table_or_queryset)
             if isinstance(table_or_queryset, QuerySet):
-                table = tables.QuerySetTable(table_or_queryset,
-                                             self.checkboxes)
+                table_klass = tables.tables.queryset_table_factory(
+                    table_or_queryset, self.checkboxes)
+                table = table_klass(table_or_queryset)
             else:
                 table = table_or_queryset
 
@@ -231,14 +233,15 @@ class SmartRenderTableNode(Node):
             table.order_by = request.GET.get('sort')
             if self.paginate:
                 table.paginate(page=request.GET.get('page', 1),
-                               per_page=self.paginate.resolve(context))
-            context['table'] = table
-            context['header_template'] = self.header_template.resolve(context)\
-                    if self.header_template is not None else None
-            context['row_template'] = self.row_template.resolve(context)\
-                    if self.row_template is not None else None
+                               per_page=resolve(self.paginate))
+            render_context = RequestContext(request, {
+                'table': table,
+                'header_template': resolve(self.header_template),
+                'row_template': resolve(self.row_template)
+            })
+            render_context.update(context)
             if self.table_template:
-                template = self.table_template.resolve(context)
+                template = resolve(self.table_template)
             else:
                 template = table.template
             if isinstance(template, basestring):
@@ -248,7 +251,7 @@ class SmartRenderTableNode(Node):
                 template = select_template(template)
             try:
                 table.request = request  # HACK! :(
-                return template.render(context)
+                return template.render(render_context)
             finally:
                 del table.request
 
